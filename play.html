@@ -191,10 +191,11 @@
                                    hostname.includes('vercel.app');
                 
                 if (isStaticHost) {
-                    // НА СТАТИЧЕСКОМ ХОСТИНГЕ: используем предустановленный URL сервера
-                    // ЗАМЕНИТЕ ЭТУ СТРОКУ НА ВАШ РЕАЛЬНЫЙ WEBSOCKET URL С RENDER
+                    // !! ВАЖНО: ЗАМЕНИТЕ ЭТУ СТРОКУ НА ВАШ РЕАЛЬНЫЙ WEBSOCKET URL С RENDER !!
+                    // Формат: wss://your-service-name.onrender.com
+                    // Вы можете найти этот URL в панели управления Render в разделе деталей вашего сервиса.
                     // Пример: 'wss://snake-battle-royale.onrender.com'
-                    serverUrl = 'wss://snake-battle-royale.onrender.com';
+                    serverUrl = 'wss://snake-battle-royale.onrender.com'; // <-- ЗАМЕНИТЕ ЭТОЙ СТРОКЕ
                 } else {
                     // ЛОКАЛЬНАЯ РАЗРАБОТКА ИЛИ СОБСТВЕННЫЙ ДОМЕН: формируем URL от текущего хоста
                     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -222,7 +223,7 @@
                     document.getElementById('status').textContent = '🔴 Ошибка'; 
                     document.getElementById('status').style.color = '#ff3232';
                     alert('Ошибка подключения! Проверьте, запущен ли сервер на Render и корректен ли URL.\n' +
-                          'Если вы используете GitHub Pages, убедитесь, что в коде указан правильный URL вашего Render сервера.'); 
+                          'Если вы используете GitHub Pages, убедитесь, что вы заменили закомментированную строку выше на ваш реальный WebSocket URL из Render.'); 
                 };
             } catch (e) { 
                 document.getElementById('status').textContent = '🔴 Ошибка'; 
