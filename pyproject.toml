@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "snake-battle-royale"
+version = "1.0.0"
+description = "Online Snake Battle Royale Game"
+authors = ["Petr"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+websockets = "^10.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
