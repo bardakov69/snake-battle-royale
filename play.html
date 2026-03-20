@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🐍 Snake Battle Royale — Онлайн</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a14;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            color: #dcdcf0;
+        }
+        #loginScreen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 30px;
+            background: rgba(25, 25, 45, 0.9);
+            border-radius: 20px;
+            border: 2px solid #00c8ff;
+        }
+        #loginScreen h1 { color: #00c8ff; font-size: 28px; }
+        #loginScreen input {
+            padding: 15px 20px;
+            font-size: 18px;
+            border: 2px solid #00c8ff;
+            border-radius: 10px;
+            background: #0a0a14;
+            color: #fff;
+            width: 250px;
+            text-align: center;
+        }
+        #loginScreen button {
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #00c8ff;
+            color: #0a0a14;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #loginScreen button:active { background: #0096c8; }
+        #gameScreen { display: none; flex-direction: column; align-items: center; }
+        #gameCanvas {
+            border: 3px solid #00c8ff;
+            border-radius: 10px;
+            background: #0a0a14;
+        }
+        #ui {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: rgba(25, 25, 45, 0.8);
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        #status { color: #00ff96; }
+        #controls {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        #actionBtn {
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #ff6464;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #actionBtn:active { background: #ff3232; }
+        #mobileControls {
+            display: none;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(2, 60px);
+            gap: 5px;
+            margin-top: 15px;
+        }
+        .ctrl-btn {
+            width: 60px; height: 60px;
+            background: rgba(0, 200, 255, 0.3);
+            border: 2px solid #00c8ff;
+            border-radius: 10px;
+            color: #00c8ff;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .ctrl-btn:active { background: rgba(0, 200, 255, 0.6); }
+        .ctrl-up { grid-column: 2; grid-row: 1; }
+        .ctrl-left { grid-column: 1; grid-row: 2; }
+        .ctrl-down { grid-column: 2; grid-row: 2; }
+        .ctrl-right { grid-column: 3; grid-row: 2; }
+        #leaderboard {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(25, 25, 45, 0.8);
+            border-radius: 10px;
+            max-width: 600px;
+            width: 100%;
+        }
+        #leaderboard h3 { color: #00c8ff; margin-bottom: 5px; }
+        #leaderboard ul { list-style: none; max-height: 100px; overflow-y: auto; }
+        #leaderboard li { padding: 3px 0; display: flex; justify-content: space-between; }
+        @media (max-width: 768px) {
+            #mobileControls { display: grid; }
+            #loginScreen h1 { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="loginScreen">
+        <h1>🐍 Snake Battle Royale</h1>
+        <input type="text" id="nameInput" placeholder="Ваше имя" maxlength="15">
+        <input type="hidden" id="serverInput" value="wss://snake-battle-royale.onrender.com">
+        <button onclick="connectToServer()">🎮 ИГРАТЬ</button>
+        <p style="font-size: 12px; color: #888;">Сервер: wss://snake-battle-royale.onrender.com</p>
+    </div>
+    
+    <div id="gameScreen">
+        <div id="ui">
+            <span id="playerName">Игрок</span>
+            <span id="status">🟢 Онлайн</span>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="leaderboard">
+            <h3>🏆 Счёт</h3>
+            <ul id="scoreList"></ul>
+        </div>
+        <div id="controls">
+            <button id="actionBtn">💣 Бомба (B)</button>
+            <div id="mobileControls">
+                <div class="ctrl-btn ctrl-up" data-dir="UP">▲</div>
+                <div class="ctrl-btn ctrl-left" data-dir="LEFT">◀</div>
+                <div class="ctrl-btn ctrl-down" data-dir="DOWN">▼</div>
+                <div class="ctrl-btn ctrl-right" data-dir="RIGHT">▶</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CONFIG = { GRID_COLS: 40, GRID_ROWS: 50, COLORS: { bg: '#0a0a14', grid: '#19192d', food: '#ff6464', foodStar: '#ffc832', tnt: '#ff3232' } };
+        const UP = {x: 0, y: -1}, DOWN = {x: 0, y: 1}, LEFT = {x: -1, y: 0}, RIGHT = {x: 1, y: 0};
+        const DIR_MAP = {'UP': UP, 'DOWN': DOWN, 'LEFT': LEFT, 'RIGHT': RIGHT, 'up': UP, 'down': DOWN, 'left': LEFT, 'right': RIGHT};
+        
+        let ws = null, playerName = '', serverUrl = '', gameState = { snakes: {}, foods: [], bombs: [], scores: {} }, mySnake = null;
+        const canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d');
+        let cellWidth = 10, cellHeight = 10;
+
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 40, 600), maxHeight = Math.min(window.innerHeight - 280, 700);
+            const aspect = CONFIG.GRID_COLS / CONFIG.GRID_ROWS;
+            let width = maxWidth, height = width / aspect;
+            if (height > maxHeight) { height = maxHeight; width = height * aspect; }
+            canvas.width = width; canvas.height = height;
+            cellWidth = width / CONFIG.GRID_COLS; cellHeight = height / CONFIG.GRID_ROWS;
+        }
+
+        function connectToServer() {
+            playerName = document.getElementById('nameInput').value.trim() || 'Player';
+            serverUrl = document.getElementById('serverInput').value;
+            try {
+                ws = new WebSocket(serverUrl);
+                ws.onopen = () => { ws.send(JSON.stringify({ command: 'join', name: playerName, room: 'default' })); };
+                ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+                ws.onclose = () => { document.getElementById('status').textContent = '🔴 Оффлайн'; document.getElementById('status').style.color = '#ff3232'; };
+                ws.onerror = () => alert('Ошибка подключения!');
+            } catch (e) { alert('Неверный адрес!'); }
+        }
+
+        function handleMessage(data) {
+            if (data.type === 'joined') {
+                playerName = data.name;
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('gameScreen').style.display = 'flex';
+                document.getElementById('playerName').textContent = playerName;
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+            } else if (data.type === 'game_state') {
+                gameState = data.state;
+                mySnake = gameState.snakes[playerName];
+                draw();
+                updateLeaderboard();
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = CONFIG.COLORS.bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = CONFIG.COLORS.grid; ctx.lineWidth = 1;
+            for (let x = 0; x <= CONFIG.GRID_COLS; x++) { ctx.beginPath(); ctx.moveTo(x * cellWidth, 0); ctx.lineTo(x * cellWidth, canvas.height); ctx.stroke(); }
+            for (let y = 0; y <= CONFIG.GRID_ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * cellHeight); ctx.lineTo(canvas.width, y * cellHeight); ctx.stroke(); }
+            for (const food of gameState.foods) {
+                ctx.fillStyle = food.is_star ? CONFIG.COLORS.foodStar : CONFIG.COLORS.food;
+                ctx.beginPath(); ctx.arc((food.pos.x + 0.5) * cellWidth, (food.pos.y + 0.5) * cellHeight, cellWidth * 0.4, 0, Math.PI * 2); ctx.fill();
+            }
+            for (const bomb of gameState.bombs) {
+                ctx.fillStyle = CONFIG.COLORS.tnt;
+                ctx.fillRect(bomb.pos.x * cellWidth + 2, bomb.pos.y * cellHeight + 2, cellWidth - 4, cellHeight - 4);
+                ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.min(cellWidth, cellHeight) * 0.5}px Arial`;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('TNT', (bomb.pos.x + 0.5) * cellWidth, (bomb.pos.y + 0.5) * cellHeight);
+            }
+            for (const snake of Object.values(gameState.snakes)) {
+                if (!snake.alive || snake.body.length === 0) continue;
+                for (let i = snake.body.length - 1; i >= 0; i--) {
+                    const segment = snake.body[i];
+                    ctx.fillStyle = snake.color;
+                    if (i === 0) ctx.fillStyle = '#fff';
+                    ctx.fillRect(segment.x * cellWidth + 1, segment.y * cellHeight + 1, cellWidth - 2, cellHeight - 2);
+                    if (i === 0 && snake.owner_name === playerName) {
+                        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2;
+                        ctx.strokeRect(segment.x * cellWidth, segment.y * cellHeight, cellWidth, cellHeight);
+                    }
+                }
+            }
+        }
+
+        function updateLeaderboard() {
+            const scores = gameState.scores || {};
+            const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            document.getElementById('scoreList').innerHTML = sorted.map(([name, score], i) => `<li><span>${i + 1}. ${name}</span><span>${score}</span></li>`).join('');
+        }
+
+        function sendMove(direction) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ command: 'move', direction })); }
+        function sendBomb() { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ command: 'bomb' })); }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyB') sendBomb();
+            const keyMap = {'ArrowUp': 'UP', 'KeyW': 'UP', 'ArrowDown': 'DOWN', 'KeyS': 'DOWN', 'ArrowLeft': 'LEFT', 'KeyA': 'LEFT', 'ArrowRight': 'RIGHT', 'KeyD': 'RIGHT'};
+            if (keyMap[e.code]) sendMove(keyMap[e.code]);
+        });
+        document.getElementById('actionBtn').addEventListener('click', sendBomb);
+        document.querySelectorAll('.ctrl-btn').forEach(btn => {
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); sendMove(btn.dataset.dir); });
+            btn.addEventListener('click', () => sendMove(btn.dataset.dir));
+        });
+    </script>
+</body>
+</html>
