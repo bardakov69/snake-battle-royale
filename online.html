@@ -178,10 +178,10 @@
     <div id="loginScreen">
         <h1>🐍 Snake Battle Royale</h1>
         <input type="text" id="nameInput" placeholder="Ваше имя" maxlength="15">
-        <input type="text" id="serverInput" placeholder="wss://your-app.onrender.com" value="ws://localhost:8765">
+        <input type="hidden" id="serverInput" value="wss://snake-battle-royale.onrender.com">
         <button onclick="connectToServer()">🎮 ИГРАТЬ</button>
         <p style="font-size: 12px; color: #888;">
-            Для игры в сети: запустите сервер на ПК и введите его IP
+            Сервер: wss://snake-battle-royale.onrender.com
         </p>
     </div>
     
