@@ -186,6 +186,9 @@ class Snake:
             "score": self.score,
         }
 
+    def grow(self, amount):
+        self.grow_pending += amount
+
 
 class Food:
     def __init__(self, pos, is_star=False):
