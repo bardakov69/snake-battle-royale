@@ -178,12 +178,60 @@
 
         function connectToServer() {
             playerName = document.getElementById('nameInput').value.trim() || 'Player';
-            serverUrl = document.getElementById('serverInput').value;
-            // Если URL пустой, используем относительный путь (для Render)
+            let serverUrl = document.getElementById('serverInput').value.trim();
+            
+            // Если URL не указан вручную, определяем его автоматически
             if (!serverUrl) {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                serverUrl = `${protocol}//${window.location.host}`;
+                const hostname = window.location.hostname.toLowerCase();
+                
+                // Проверяем, не находимся ли мы на известном статическом хостинге
+                // (где мы раздаем только игру, а сервер отдельный)
+                const isStaticHost = hostname.endsWith('.github.io') || 
+                                   hostname.includes('netlify.app') ||
+                                   hostname.includes('vercel.app');
+                
+                if (isStaticHost) {
+                    // НА СТАТИЧЕСКОМ ХОСТИНГЕ: используем предустановленный URL сервера
+                    // ЗАМЕНИТЕ ЭТУ СТРОКУ НА ВАШ РЕАЛЬНЫЙ WEBSOCKET URL С RENDER
+                    // Пример: 'wss://snake-battle-royale.onrender.com'
+                    serverUrl = 'wss://snake-battle-royale.onrender.com';
+                } else {
+                    // ЛОКАЛЬНАЯ РАЗРАБОТКА ИЛИ СОБСТВЕННЫЙ ДОМЕН: формируем URL от текущего хоста
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    serverUrl = `${protocol}//${window.location.host}`;
+                }
             }
+            
+            document.getElementById('serverInfo').textContent = `Сервер: ${serverUrl}`;
+            document.getElementById('status').textContent = '🟡 Соединение...';
+            document.getElementById('status').style.color = '#ffc800';
+            
+            try {
+                ws = new WebSocket(serverUrl);
+                ws.onopen = () => { 
+                    document.getElementById('status').textContent = '🟢 Онлайн'; 
+                    document.getElementById('status').style.color = '#00ff96';
+                    ws.send(JSON.stringify({ command: 'join', name: playerName, room: 'default' })); 
+                };
+                ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
+                ws.onclose = () => { 
+                    document.getElementById('status').textContent = '🔴 Оффлайн'; 
+                    document.getElementById('status').style.color = '#ff3232'; 
+                };
+                ws.onerror = () => { 
+                    document.getElementById('status').textContent = '🔴 Ошибка'; 
+                    document.getElementById('status').style.color = '#ff3232';
+                    alert('Ошибка подключения! Проверьте, запущен ли сервер на Render и корректен ли URL.\n' +
+                          'Если вы используете GitHub Pages, убедитесь, что в коде указан правильный URL вашего Render сервера.'); 
+                };
+            } catch (e) { 
+                document.getElementById('status').textContent = '🔴 Ошибка'; 
+                document.getElementById('status').style.color = '#ff3232';
+                alert('Неверный адрес!'); 
+            }
+        }
+            }
+            
             document.getElementById('serverInfo').textContent = `Сервер: ${serverUrl}`;
             try {
                 ws = new WebSocket(serverUrl);
@@ -197,7 +245,7 @@
                 ws.onerror = () => { 
                     document.getElementById('status').textContent = '🔴 Ошибка'; 
                     document.getElementById('status').style.color = '#ff3232';
-                    alert('Ошибка подключения!'); 
+                    alert('Ошибка подключения! Проверьте, запущен ли сервер на Render.'); 
                 };
             } catch (e) { 
                 document.getElementById('status').textContent = '🔴 Ошибка'; 
