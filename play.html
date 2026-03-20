@@ -132,9 +132,9 @@
     <div id="loginScreen">
         <h1>🐍 Snake Battle Royale</h1>
         <input type="text" id="nameInput" placeholder="Ваше имя" maxlength="15">
-        <input type="hidden" id="serverInput" value="wss://snake-battle-royale.onrender.com">
+        <input type="hidden" id="serverInput" value="">
         <button onclick="connectToServer()">🎮 ИГРАТЬ</button>
-        <p style="font-size: 12px; color: #888;">Сервер: wss://snake-battle-royale.onrender.com</p>
+        <p style="font-size: 12px; color: #888;" id="serverInfo"></p>
     </div>
     
     <div id="gameScreen">
@@ -179,13 +179,31 @@
         function connectToServer() {
             playerName = document.getElementById('nameInput').value.trim() || 'Player';
             serverUrl = document.getElementById('serverInput').value;
+            // Если URL пустой, используем относительный путь (для Render)
+            if (!serverUrl) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                serverUrl = `${protocol}//${window.location.host}`;
+            }
+            document.getElementById('serverInfo').textContent = `Сервер: ${serverUrl}`;
             try {
                 ws = new WebSocket(serverUrl);
-                ws.onopen = () => { ws.send(JSON.stringify({ command: 'join', name: playerName, room: 'default' })); };
+                ws.onopen = () => { 
+                    document.getElementById('status').textContent = '🟢 Онлайн'; 
+                    document.getElementById('status').style.color = '#00ff96';
+                    ws.send(JSON.stringify({ command: 'join', name: playerName, room: 'default' })); 
+                };
                 ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
                 ws.onclose = () => { document.getElementById('status').textContent = '🔴 Оффлайн'; document.getElementById('status').style.color = '#ff3232'; };
-                ws.onerror = () => alert('Ошибка подключения!');
-            } catch (e) { alert('Неверный адрес!'); }
+                ws.onerror = () => { 
+                    document.getElementById('status').textContent = '🔴 Ошибка'; 
+                    document.getElementById('status').style.color = '#ff3232';
+                    alert('Ошибка подключения!'); 
+                };
+            } catch (e) { 
+                document.getElementById('status').textContent = '🔴 Ошибка'; 
+                document.getElementById('status').style.color = '#ff3232';
+                alert('Неверный адрес!'); 
+            }
         }
 
         function handleMessage(data) {
