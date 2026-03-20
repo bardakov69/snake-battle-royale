@@ -21,8 +21,8 @@ CONFIG = {
     "BOT_SPEED": 5.0,
     "PLAYER_SPEED": 5.0,
     "BASE_FOOD": 25,
-    "MAX_PLAYERS": 10,
-    "PLAYERS_PER_ROUND": 3,
+    "MAX_PLAYERS": 10,  # Максимум игроков в комнате
+    "PLAYERS_PER_ROUND": 0,  # Мы не спавним ботов, управляем змейками игроков сами
     "SPAWN_LEN": 3,
     "CORPSE_FOOD": 3,
     # Безопасность
@@ -123,7 +123,7 @@ class RateLimiter:
 
 
 class Snake:
-    def __init__(self, owner_name, country, is_bot, start_pos):
+    def __init__(self, owner_name, country, is_bot, start_pos, owner_ws=None):
         self.owner_name = owner_name
         self.country = country
         self.is_bot = is_bot
@@ -144,6 +144,8 @@ class Snake:
         self.score = 0
         self.last_move_time = time.time()
         self.move_count = 0
+        self.respawn_timer = 0.0  # время до респавна (0 если не мертва)
+        self.owner_ws = owner_ws  # websocket if human, None for bot
 
     def head(self):
         return self.body[0] if self.body else None
@@ -189,6 +191,28 @@ class Snake:
     def grow(self, amount):
         self.grow_pending += amount
 
+    def start_respawn(self, min_time=3.0, max_time=6.0):
+        self.respawn_timer = random.uniform(min_time, max_time)
+
+    def update_respawn(self, dt):
+        if self.respawn_timer > 0:
+            self.respawn_timer -= dt
+            if self.respawn_timer <= 0:
+                return True  # ready to respawn
+        return False
+
+    def respawn(self, pos):
+        self.alive = True
+        self.body = [{"x": pos[0], "y": pos[1]}]
+        for i in range(1, CONFIG["SPAWN_LEN"]):
+            self.body.append({"x": pos[0] - i, "y": pos[1]})
+        self.direction = "RIGHT"
+        self.grow_pending = 0
+        self.speed = CONFIG["BOT_SPEED"] if self.is_bot else CONFIG["PLAYER_SPEED"]
+        self.dt_accum = random.uniform(0.0, 1.0 / self.speed)
+        self.starvation_timer = self.max_starvation
+        # Note: we keep score, color, owner_name, etc.
+
 
 class Food:
     def __init__(self, pos, is_star=False):
@@ -213,12 +237,12 @@ class GameRoom:
         self.room_id = room_id
         self.players = {}  # websocket -> Snake
         self.player_names = set()
-        self.snakes = {}
+        self.snakes = {}  # name -> Snake
         self.foods = []
         self.bombs = []
         self.round_over = False
         self.restart_timer = 0
-        self.scores = {}
+        self.scores = {}  # имя -> очки
         self.last_state_hash = ""
 
     def add_player(self, websocket, name):
@@ -240,7 +264,7 @@ class GameRoom:
         self.player_names.add(unique_name)
         pos = self.find_empty_spawn()
         if pos:
-            snake = Snake(unique_name, "USER", False, pos)
+            snake = Snake(unique_name, "USER", False, pos, websocket)
             self.players[websocket] = snake
             self.snakes[unique_name] = snake
             self.scores[unique_name] = 0
@@ -255,6 +279,8 @@ class GameRoom:
             if snake.owner_name in self.snakes:
                 del self.snakes[snake.owner_name]
             self.player_names.discard(snake.owner_name)
+            if snake.owner_name in self.scores:
+                del self.scores[snake.owner_name]
 
     def find_empty_spawn(self):
         occupied = set()
@@ -321,97 +347,47 @@ class GameRoom:
                 return
 
     def start_round(self):
-        self.snakes = {}
+        # Очистка еды и бомб, но сохраняем змейки (с их текущим состоянием alive/dead и таймерами)
         self.foods = []
         self.bombs = []
         self.round_over = False
         self.restart_timer = 0
 
+        # Убедимся, что для каждого игрока есть змейка (создаем, если отсутствует)
         for ws, old_snake in self.players.items():
-            pos = self.find_empty_spawn()
-            if pos:
-                snake = Snake(old_snake.owner_name, "USER", False, pos)
-                snake.score = old_snake.score
-                self.players[ws] = snake
-                self.snakes[snake.owner_name] = snake
+            if ws not in self.players:
+                continue  # защита от изменения словаря во время итерации
+            if old_snake.owner_name not in self.snakes:
+                # Змейка для этого игрока отсутствует, создаем новую
+                pos = self.find_empty_spawn()
+                if pos:
+                    snake = Snake(old_snake.owner_name, "USER", False, pos, ws)
+                    self.players[ws] = snake
+                    self.snakes[snake.owner_name] = snake
+                    if snake.owner_name not in self.scores:
+                        self.scores[snake.owner_name] = 0
+            else:
+                # Змейка существует, но могла быть мертва - убеждаемся, что её таймер сброшен
+                snake = self.snakes[old_snake.owner_name]
+                if not snake.alive and snake.respawn_timer > 0:
+                    # Если змейка мертва и ждет респавн, сбрасываем таймер (чтобы не респавнить сразу)
+                    snake.respawn_timer = 0.0
+                # Если змейка жива, оставляем как есть
 
-        while len(self.snakes) < CONFIG["PLAYERS_PER_ROUND"]:
-            name = random.choice(NAMES)
-            counter = 1
-            while name in self.snakes:
-                name = f"{random.choice(NAMES)}_{counter}"
-                counter += 1
-            pos = self.find_empty_spawn()
-            if pos:
-                country = random.choice(COUNTRIES)
-                snake = Snake(name, country, True, pos)
-                self.snakes[name] = snake
-
-        while len(self.foods) < CONFIG["BASE_FOOD"]:
-            self.spawn_food()
+        # Удаляем змейки, которые больше не принадлежат подключенным игрокам
+        # (например, если игрок вышел, но мы не успели удалить)
+        to_remove = []
+        for name, snake in self.snakes.items():
+            if snake.owner_ws is not None and snake.owner_ws not in self.players:
+                to_remove.append(name)
+        for name in to_remove:
+            snake = self.snakes.pop(name)
+            if name in self.scores:
+                del self.scores[name]
 
     def update_bots(self):
-        dangers = set()
-        for snake in self.snakes.values():
-            if snake.alive:
-                for segment in snake.body:
-                    dangers.add((segment["x"], segment["y"]))
-        for bomb in self.bombs:
-            dangers.add((bomb.pos["x"], bomb.pos["y"]))
-
-        for snake in self.snakes.values():
-            if not snake.alive or not snake.is_bot:
-                continue
-
-            if random.random() < 0.15:
-                self.bot_find_path(snake, dangers)
-
-    def bot_find_path(self, bot, dangers):
-        head = bot.head()
-        if not head:
-            return
-
-        viable = []
-        for dir_name, dir_vec in [
-            ("UP", UP),
-            ("DOWN", DOWN),
-            ("LEFT", LEFT),
-            ("RIGHT", RIGHT),
-        ]:
-            if bot.direction != OPPOSITE.get(dir_name):
-                nx = (head["x"] + dir_vec["x"]) % CONFIG["GRID_COLS"]
-                ny = (head["y"] + dir_vec["y"]) % CONFIG["GRID_ROWS"]
-                if (nx, ny) not in dangers:
-                    viable.append((dir_name, dir_vec))
-
-        if not viable:
-            return
-
-        nearest = None
-        min_dist = float("inf")
-        for food in self.foods:
-            dist = abs(food.pos["x"] - head["x"]) + abs(food.pos["y"] - head["y"])
-            if dist < min_dist:
-                min_dist = dist
-                nearest = food.pos
-
-        if nearest:
-            possible = []
-            if nearest["x"] > head["x"]:
-                possible.append(("RIGHT", RIGHT))
-            elif nearest["x"] < head["x"]:
-                possible.append(("LEFT", LEFT))
-            if nearest["y"] > head["y"]:
-                possible.append(("DOWN", DOWN))
-            elif nearest["y"] < head["y"]:
-                possible.append(("UP", UP))
-
-            safe_possible = [p for p in possible if any(p[0] == v[0] for v in viable)]
-            if safe_possible:
-                bot.direction = random.choice(safe_possible)[0]
-                return
-
-        bot.direction = random.choice(viable)[0]
+        # У нас нет ботов, так как PLAYERS_PER_ROUND = 0
+        pass
 
     def move_snake(self, snake, direction):
         if isinstance(direction, str):
@@ -439,10 +415,8 @@ class GameRoom:
         snake.starvation_timer -= 1
         if snake.starvation_timer <= 0:
             snake.alive = False
-            for i, pos in enumerate(snake.body):
-                if i % (CONFIG["CORPSE_FOOD"] * 2) == 0:
-                    self.foods.append(Food(pos, False))
             snake.body = []
+            snake.start_respawn()  # Запускаем таймер респавна
 
     def resolve_collisions(self, snakes_moved):
         occupied = {}
@@ -484,10 +458,8 @@ class GameRoom:
             if not snake.alive:
                 continue
             snake.alive = False
-            for i, pos in enumerate(snake.body):
-                if i % CONFIG["CORPSE_FOOD"] == 0:
-                    self.foods.append(Food(pos, True))
             snake.body = []
+            snake.start_respawn()  # Запускаем таймер респавна при смерти от столкновения
 
         food_map = {(f.pos["x"], f.pos["y"]): i for i, f in enumerate(self.foods)}
 
@@ -509,12 +481,6 @@ class GameRoom:
             self.spawn_food()
 
     def update(self, dt):
-        if self.round_over:
-            self.restart_timer -= dt
-            if self.restart_timer <= 0:
-                self.start_round()
-            return
-
         self.update_bots()
 
         alive_snakes = [s for s in self.snakes.values() if s.alive]
@@ -535,17 +501,35 @@ class GameRoom:
         if snakes_moved:
             self.resolve_collisions(snakes_moved)
 
-        alive = [s for s in self.snakes.values() if s.alive]
-        if len(alive) == 1 and len(self.snakes) > 1:
-            winner = alive[0]
-            winner.score += 5
-            if winner.owner_name in self.scores:
-                self.scores[winner.owner_name] += 5
-            self.round_over = True
-            self.restart_timer = 3.0
-        elif len(alive) == 0 and len(self.snakes) > 0:
-            self.round_over = True
-            self.restart_timer = 1.5
+        # Обновляем таймеры респавна для мертвых змеек и респавним, если пора
+        for snake in self.snakes.values():
+            if not snake.alive:
+                if snake.update_respawn(dt):
+                    # Время респавна вышло, ищем свободное место и респавним
+                    pos = self.find_empty_spawn()
+                    if pos:
+                        snake.respawn(pos)
+                    else:
+                        # Если нет свободного места, сбрасываем таймер и пробуем позже
+                        snake.respawn_timer = (
+                            0.1  # маленькая задержка перед следующей проверкой
+                        )
+
+        # Проверка условий окончания раунда - мы не останавливаем игру при смерти змеек
+        # Можно оставить раунд вечным, или добавить своё условие (например, время)
+        # Пока что раунд не заканчивается автоматически
+        # Если нужно сохранять старый функционал конца раунда при определённом условии, раскомментировать ниже:
+        # alive = [s for s in self.snakes.values() if s.alive]
+        # if len(alive) == 0 and len(self.snakes) > 0:
+        #     self.round_over = True
+        #     self.restart_timer = 1.5
+        # elif len(alive) == 1 and len(self.snakes) > 1:
+        #     winner = alive[0]
+        #     winner.score += 5
+        #     if winner.owner_name in self.scores:
+        #         self.scores[winner.owner_name] += 5
+        #     self.round_over = True
+        #     self.restart_timer = 3.0
 
     def get_state(self):
         return {
@@ -618,6 +602,13 @@ async def handle_client(websocket, path=None):
                     )
                     print(f"🎮 Игрок присоединился: {name}")
 
+                else:
+                    await websocket.send(
+                        json.dumps(
+                            {"type": "error", "message": "Room is full or spawn failed"}
+                        )
+                    )
+
             elif cmd == "move":
                 if websocket in player_rooms:
                     room = rooms[player_rooms[websocket]]
@@ -638,6 +629,8 @@ async def handle_client(websocket, path=None):
                     room = rooms[player_rooms[websocket]]
                     room.remove_player(websocket)
                     del player_rooms[websocket]
+
+            # Можно добавить другие команды по необходимости
 
     except websockets.exceptions.ConnectionClosed:
         pass
