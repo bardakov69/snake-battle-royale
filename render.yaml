@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: snake-battle-royale
+    env: python
+    region: frankfurt
+    plan: free
+    buildCommand: ""
+    startCommand: python server_secure.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+    healthCheckPath: /
+    autoDeploy: true
