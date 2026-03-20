@@ -68,23 +68,18 @@
         }
         #status { color: #00ff96; }
         #controls {
-            margin-top: 15px;
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 480px;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 10px;
         }
-        #actionBtn {
-            padding: 12px 30px;
-            font-size: 18px;
-            background: #ff6464;
-            color: #fff;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        #actionBtn:active { background: #ff3232; }
+
         #mobileControls {
             display: none;
             grid-template-columns: repeat(3, 60px);
@@ -148,7 +143,6 @@
             <ul id="scoreList"></ul>
         </div>
         <div id="controls">
-            <button id="actionBtn">💣 Бомба (B)</button>
             <div id="mobileControls">
                 <div class="ctrl-btn ctrl-up" data-dir="UP">▲</div>
                 <div class="ctrl-btn ctrl-left" data-dir="LEFT">◀</div>
@@ -168,7 +162,9 @@
         let cellWidth = 10, cellHeight = 10;
 
         function resizeCanvas() {
-            const maxWidth = Math.min(window.innerWidth - 40, 600), maxHeight = Math.min(window.innerHeight - 280, 700);
+            // Reserve space for UI and controls (approx 200px for scoreboard, status, controls, etc.)
+            const maxWidth = Math.min(window.innerWidth - 40, 600);
+            const maxHeight = Math.min(window.innerHeight - 220, 600); // Increased reservation for mobile controls
             const aspect = CONFIG.GRID_COLS / CONFIG.GRID_ROWS;
             let width = maxWidth, height = width / aspect;
             if (height > maxHeight) { height = maxHeight; width = height * aspect; }
@@ -317,7 +313,7 @@
             const keyMap = {'ArrowUp': 'UP', 'KeyW': 'UP', 'ArrowDown': 'DOWN', 'KeyS': 'DOWN', 'ArrowLeft': 'LEFT', 'KeyA': 'LEFT', 'ArrowRight': 'RIGHT', 'KeyD': 'RIGHT'};
             if (keyMap[e.code]) sendMove(keyMap[e.code]);
         });
-        document.getElementById('actionBtn').addEventListener('click', sendBomb);
+
         document.querySelectorAll('.ctrl-btn').forEach(btn => {
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); sendMove(btn.dataset.dir); });
             btn.addEventListener('click', () => sendMove(btn.dataset.dir));
