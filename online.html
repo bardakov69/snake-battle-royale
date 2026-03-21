@@ -387,23 +387,23 @@
             // Змейки
             for (const snake of Object.values(gameState.snakes)) {
                 if (!snake.alive || snake.body.length === 0) continue;
-                
+
                 for (let i = snake.body.length - 1; i >= 0; i--) {
                     const segment = snake.body[i];
                     const isHead = i === 0;
-                    
+
                     ctx.fillStyle = snake.color;
                     if (isHead) {
                         ctx.fillStyle = '#fff';
                     }
-                    
+
                     ctx.fillRect(
                         segment.x * cellWidth + 1,
                         segment.y * cellHeight + 1,
                         cellWidth - 2,
                         cellHeight - 2
                     );
-                    
+
                     if (isHead && snake.owner_name === playerName) {
                         ctx.strokeStyle = '#00ff00';
                         ctx.lineWidth = 2;
@@ -414,6 +414,20 @@
                             cellHeight
                         );
                     }
+                }
+
+                // Рисуем имя над змейкой
+                const head = snake.body[0];
+                if (head) {
+                    ctx.fillStyle = '#fff';
+                    ctx.font = `bold ${Math.min(cellWidth, cellHeight) * 0.7}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(
+                        snake.owner_name,
+                        (head.x + 0.5) * cellWidth,
+                        head.y * cellHeight - 2
+                    );
                 }
             }
         }
